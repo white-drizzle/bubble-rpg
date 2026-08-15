@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="RPG 风格泡泡堂小游戏：放置水泡炸翻怪物，升级打装备，闯过五层迷宫挑战暗影魔王！">
+<title>泡泡勇者 RPG · 泡泡堂</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='%236fc4ff'/%3E%3Ccircle cx='36' cy='36' r='10' fill='white' opacity='0.8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+
+  <!-- ============ HUD ============ -->
+  <div id="hud">
+    <div class="hud-left">
+      <div class="hud-row">
+        <span class="badge" id="hud-level">Lv.1</span>
+        <span id="hud-class">泡泡战士</span>
+        <div class="bar hp"><div class="bar-fill" id="hud-hp-bar"></div><span class="bar-text" id="hud-hp-text">-</span></div>
+        <div class="bar mp"><div class="bar-fill" id="hud-mp-bar"></div><span class="bar-text" id="hud-mp-text">-</span></div>
+      </div>
+      <div class="hud-row small">
+        <div class="bar xp"><div class="bar-fill" id="hud-xp-bar"></div><span class="bar-text" id="hud-xp-text">-</span></div>
+      </div>
+    </div>
+    <div class="hud-mid">
+      <div id="hud-floor">第 1 关 · 青草平原</div>
+      <div id="hud-bubbles"></div>
+    </div>
+    <div class="hud-right">
+      <span class="hud-stat" id="hud-coins">🪙 0</span>
+      <span class="hud-stat" id="hud-kills">⚔ 0</span>
+      <button class="hud-btn" id="btn-hud-inv" title="背包 (I)">🎒</button>
+      <button class="hud-btn sound-btn" id="btn-hud-sound" title="音效 (M)"><span class="sound-icon">🔊</span></button>
+      <button class="hud-btn" id="btn-hud-pause" title="暂停 (Esc)">⏸</button>
+    </div>
+  </div>
+
+  <!-- ============ 画布 + 触屏控件 ============ -->
+  <div id="canvas-wrap">
+    <canvas id="game" width="720" height="624"></canvas>
+    <div id="touch-controls">
+      <div id="joy-base"><div id="joy-knob"></div></div>
+      <div id="touch-btns">
+        <button class="tbtn tbtn-bubble" id="btn-touch-bubble">💣</button>
+        <button class="tbtn" id="btn-touch-skill1">❤️</button>
+        <button class="tbtn" id="btn-touch-skill2">✨</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 技能栏 ============ -->
+  <div id="skillbar">
+    <div class="skill">
+      <kbd>空格</kbd>
+      <div class="skill-body"><div class="skill-name" id="skill-bubble-name">放置泡泡</div></div>
+    </div>
+    <div class="skill">
+      <kbd>1</kbd>
+      <div class="skill-body">
+        <div class="skill-name" id="skill1-name">治疗术</div>
+        <div class="skill-cd"><div class="skill-cd-fill" id="skill1-cd"></div></div>
+      </div>
+    </div>
+    <div class="skill">
+      <kbd>2</kbd>
+      <div class="skill-body">
+        <div class="skill-name" id="skill2-name">职业技能</div>
+        <div class="skill-cd"><div class="skill-cd-fill" id="skill2-cd"></div></div>
+      </div>
+    </div>
+    <span class="skill-hint">WASD/方向键 移动 · I 背包 · Esc 暂停</span>
+  </div>
+
+  <div id="toasts"></div>
+
+  <!-- ============ 主菜单 ============ -->
+  <div id="overlay-menu" class="overlay">
+    <div class="menu-bubbles"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i><i class="b5"></i><i class="b6"></i></div>
+    <div class="panel menu-panel">
+      <h1 class="title">泡泡勇者 <span class="title-rpg">RPG</span></h1>
+      <p class="subtitle">—— 泡泡堂 × 角色扮演 ——</p>
+      <p class="story">暗影军团入侵了泡泡王国！拿起你的魔法水泡，炸翻怪物、收集装备、升级变强，深入五层迷宫击败暗影魔王！</p>
+      <div class="menu-btns">
+        <button class="btn primary" id="menu-new">▶ 开始新游戏</button>
+        <button class="btn primary hidden" id="menu-continue">⏩ 继续游戏</button>
+        <div class="continue-info hidden" id="menu-continue-info"></div>
+        <button class="btn" id="menu-help">❓ 操作说明</button>
+        <button class="btn sound-btn" id="menu-sound"><span class="sound-label">音效：开</span></button>
+      </div>
+      <p class="footnote">纯前端小游戏 · 可部署到 GitHub Pages · 进度自动保存在浏览器</p>
+    </div>
+  </div>
+
+  <!-- ============ 选人 ============ -->
+  <div id="overlay-char" class="overlay hidden">
+    <div class="panel wide-panel">
+      <h2>选择你的英雄</h2>
+      <div id="char-cards"></div>
+      <div class="panel-btns">
+        <button class="btn" id="btn-char-back">← 返回</button>
+        <button class="btn primary" id="btn-char-confirm">⚔ 开始冒险</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 关卡开场 ============ -->
+  <div id="overlay-intro" class="overlay hidden">
+    <div class="panel intro-panel">
+      <h2 id="intro-floor">第 1 关 · 青草平原</h2>
+      <p class="flavor" id="intro-flavor"></p>
+      <p class="goal" id="intro-goal"></p>
+      <p class="enemies" id="intro-enemies"></p>
+      <button class="btn primary" id="btn-intro-start">▶ 进入战斗</button>
+      <p class="hint">提示：空格放泡泡 · 1 治疗 · 2 职业技能<br>小心！被自己的泡泡炸到也会受伤</p>
+    </div>
+  </div>
+
+  <!-- ============ 暂停 ============ -->
+  <div id="overlay-pause" class="overlay hidden">
+    <div class="panel">
+      <h2>⏸ 暂停中</h2>
+      <p id="pause-floor" class="flavor"></p>
+      <div class="menu-btns">
+        <button class="btn primary" id="btn-pause-resume">继续游戏</button>
+        <button class="btn" id="btn-pause-restart">重新开始本关</button>
+        <button class="btn" id="btn-pause-save">保存并回到主菜单</button>
+        <button class="btn" id="btn-pause-help">操作说明</button>
+        <button class="btn sound-btn" id="btn-pause-sound"><span class="sound-label">音效：开</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 死亡 ============ -->
+  <div id="overlay-over" class="overlay hidden">
+    <div class="panel">
+      <h2 class="danger">💀 你倒下了……</h2>
+      <p class="flavor">你在本关击败了 <b id="over-kills">0</b> 只怪物。<br>损失了 15% 金币，但装备与经验保留！</p>
+      <div class="menu-btns">
+        <button class="btn primary" id="btn-over-retry">🔄 重试本关</button>
+        <button class="btn" id="btn-over-menu">返回主菜单</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 通关 ============ -->
+  <div id="overlay-clear" class="overlay hidden">
+    <div class="panel">
+      <h2 class="gold">🎉 通关！</h2>
+      <p class="clear-floor" id="clear-floor"></p>
+      <table class="stats-table">
+        <tr><td>用时</td><td id="clear-time">-</td></tr>
+        <tr><td>击败怪物</td><td id="clear-kills">-</td></tr>
+        <tr><td>金币奖励</td><td id="clear-coins">-</td></tr>
+        <tr><td>经验奖励</td><td id="clear-xp">-</td></tr>
+      </table>
+      <div class="menu-btns">
+        <button class="btn primary" id="btn-clear-next">下一关 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 胜利 ============ -->
+  <div id="overlay-victory" class="overlay hidden">
+    <div class="panel">
+      <h2 class="gold">🏆 魔王已被击败！</h2>
+      <p class="flavor">泡泡王国恢复了和平，<br>而你成为了传说中的「泡泡勇者」！</p>
+      <table class="stats-table">
+        <tr><td>英雄</td><td id="victory-level">-</td></tr>
+        <tr><td>累计击杀</td><td id="victory-kills">-</td></tr>
+        <tr><td>冒险时长</td><td id="victory-time">-</td></tr>
+        <tr><td>金币</td><td id="victory-coins">-</td></tr>
+      </table>
+      <div class="menu-btns">
+        <button class="btn primary" id="btn-victory-endless">♾ 挑战无尽深渊</button>
+        <button class="btn" id="btn-victory-menu">返回主菜单</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 背包 ============ -->
+  <div id="overlay-inventory" class="overlay hidden">
+    <div class="panel inv-panel">
+      <h2 id="inv-title">背包</h2>
+      <div class="inv-cols">
+        <div class="inv-left">
+          <h3>角色属性</h3>
+          <div class="stat-line"><span>生命</span><b id="inv-hp">-</b></div>
+          <div class="stat-line"><span>魔法</span><b id="inv-mp">-</b></div>
+          <div class="stat-line"><span>攻击</span><b id="inv-atk">-</b></div>
+          <div class="stat-line"><span>防御</span><b id="inv-def">-</b></div>
+          <div class="stat-line"><span>速度</span><b id="inv-spd">-</b></div>
+          <div class="stat-line"><span>泡泡上限</span><b id="inv-bubbles">-</b></div>
+          <div class="stat-line"><span>爆炸范围</span><b id="inv-range">-</b></div>
+          <div class="stat-line"><span>金币</span><b id="inv-coins">-</b></div>
+          <h3>已装备（点击卸下）</h3>
+          <div id="inv-equipped"></div>
+        </div>
+        <div class="inv-right">
+          <h3>背包 <span class="hint-inline">（点击装备，谨慎丢弃）</span></h3>
+          <div id="inv-bag"></div>
+        </div>
+      </div>
+      <div class="panel-btns"><button class="btn primary" id="btn-inv-close">关闭背包 (Esc)</button></div>
+    </div>
+  </div>
+
+  <!-- ============ 帮助 ============ -->
+  <div id="overlay-help" class="overlay hidden">
+    <div class="panel help-panel">
+      <h2>❓ 操作说明</h2>
+      <table class="help-table">
+        <tr><td>移动</td><td>WASD / 方向键 / 手机虚拟摇杆</td></tr>
+        <tr><td>放置泡泡</td><td>空格 / 💣 按钮</td></tr>
+        <tr><td>治疗术</td><td>数字 1（消耗魔法，恢复 35% 生命）</td></tr>
+        <tr><td>职业技能</td><td>数字 2（战士护盾 / 法师冰冻 / 游侠冲刺）</td></tr>
+        <tr><td>背包</td><td>I 或 Tab</td></tr>
+        <tr><td>暂停</td><td>Esc / P</td></tr>
+        <tr><td>音效</td><td>M</td></tr>
+      </table>
+      <h3>玩法</h3>
+      <ul class="help-list">
+        <li>消灭本层所有怪物后，传送门开启，进入即通关。</li>
+        <li>打碎木箱可获得金币、药水、强化道具与随机品质装备。</li>
+        <li>泡泡爆炸会伤害你自己！也会连锁引爆其他泡泡。</li>
+        <li>击败怪物获得经验，升级回满状态并提升属性。</li>
+        <li>第 5 关是魔王战：小心它的冲刺与暗影泡泡！</li>
+      </ul>
+      <div class="panel-btns"><button class="btn primary" id="btn-help-back">返回</button></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
