@@ -144,23 +144,6 @@
     </div>
   </div>
 
-  <!-- ============ 通关 ============ -->
-  <div id="overlay-clear" class="overlay hidden">
-    <div class="panel">
-      <h2 class="gold">🎉 通关！</h2>
-      <p class="clear-floor" id="clear-floor"></p>
-      <table class="stats-table">
-        <tr><td>用时</td><td id="clear-time">-</td></tr>
-        <tr><td>击败怪物</td><td id="clear-kills">-</td></tr>
-        <tr><td>金币奖励</td><td id="clear-coins">-</td></tr>
-        <tr><td>经验奖励</td><td id="clear-xp">-</td></tr>
-      </table>
-      <div class="menu-btns">
-        <button class="btn primary" id="btn-clear-next">下一关 →</button>
-      </div>
-    </div>
-  </div>
-
   <!-- ============ 胜利 ============ -->
   <div id="overlay-victory" class="overlay hidden">
     <div class="panel">
@@ -174,6 +157,7 @@
       </table>
       <div class="menu-btns">
         <button class="btn primary" id="btn-victory-endless">♾ 挑战无尽深渊</button>
+        <button class="btn" id="btn-victory-shop">🛒 逛商店</button>
         <button class="btn" id="btn-victory-menu">返回主菜单</button>
       </div>
     </div>
@@ -193,7 +177,9 @@
           <div class="stat-line"><span>速度</span><b id="inv-spd">-</b></div>
           <div class="stat-line"><span>泡泡上限</span><b id="inv-bubbles">-</b></div>
           <div class="stat-line"><span>爆炸范围</span><b id="inv-range">-</b></div>
+          <div class="stat-line"><span>复活符</span><b id="inv-revive">-</b></div>
           <div class="stat-line"><span>金币</span><b id="inv-coins">-</b></div>
+          <div class="stat-line bonus"><span>永久祝福</span><b id="inv-bonus">-</b></div>
           <h3>已装备（点击卸下）</h3>
           <div id="inv-equipped"></div>
         </div>
@@ -203,6 +189,61 @@
         </div>
       </div>
       <div class="panel-btns"><button class="btn primary" id="btn-inv-close">关闭背包 (Esc)</button></div>
+    </div>
+  </div>
+
+  <!-- ============ 商店 / 神秘商人 / 塔罗牌 ============ -->
+  <div id="overlay-shop" class="overlay hidden">
+    <div class="panel shop-panel">
+      <h2>🛒 冒险商店</h2>
+      <p class="flavor" id="shop-floor"></p>
+      <div id="shop-stats" class="shop-stats hidden">
+        <span>⏱ <b id="shop-stats-time">-</b></span>
+        <span>⚔ <b id="shop-stats-kills">-</b></span>
+        <span>🪙 <b id="shop-stats-coins">-</b></span>
+        <span>✨ <b id="shop-stats-xp">-</b></span>
+      </div>
+      <p class="coins-line">持有金币：🪙 <b id="shop-coins">0</b></p>
+      <p class="hint-inline">点击卡片翻开，看看今天的商品～</p>
+      <div id="shop-items"></div>
+      <div class="merchant-box">
+        <div class="merchant">🧙‍♂️</div>
+        <div class="merchant-talk">
+          <div class="talk-bubble" id="merchant-bubble">呵呵，又见面了……要看看今天的好货吗？</div>
+          <div class="gacha-line">本次费用：🪙 <b id="gacha-cost">30</b>（每次翻倍）　<span id="gacha-times"></span></div>
+          <button class="btn primary" id="btn-gacha">🔮 请教神秘商人</button>
+          <div id="gacha-result"></div>
+        </div>
+      </div>
+      <div class="panel-btns">
+        <button class="btn hidden" id="btn-shop-back">← 返回</button>
+        <button class="btn primary" id="btn-shop-next">继续冒险 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 塔罗牌抽卡 ============ -->
+  <div id="overlay-tarot" class="overlay hidden">
+    <div class="tarot-bg">
+      <div class="tarot-stars"></div>
+      <div class="tarot-card" id="tarot-card">
+        <div class="tarot-card-inner">
+          <div class="tarot-face tarot-cover-face">
+            <div class="tarot-pattern">✦</div>
+            <div class="tarot-moon">☾</div>
+          </div>
+          <div class="tarot-face tarot-front-face">
+            <div class="tarot-title">命运之牌</div>
+            <div class="tarot-name" id="tarot-name">-</div>
+            <div class="tarot-desc" id="tarot-desc">-</div>
+            <div class="tarot-rune">✦</div>
+          </div>
+        </div>
+      </div>
+      <div class="tarot-rays" id="tarot-rays"></div>
+      <div class="tarot-particles" id="tarot-particles"></div>
+      <h2 class="tarot-legend" id="tarot-legend">🌟 金色传说！</h2>
+      <button class="btn primary tarot-accept hidden" id="btn-tarot-accept">收下祝福</button>
     </div>
   </div>
 

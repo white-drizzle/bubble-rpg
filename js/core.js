@@ -190,7 +190,7 @@
   function rollBoxDrop(floor) {
     const r = Math.random();
     if (r < 0.45) return null;
-    if (r < 0.60) return { type: 'coin', value: randi(8, 16) + floor * 3 };
+    if (r < 0.60) return { type: 'coin', value: randi(10, 20) + floor * 4 };
     if (r < 0.72) return { type: 'potion' };
     if (r < 0.80) return { type: 'mana' };
     if (r < 0.90) return { type: pick(['bubble', 'range', 'speed', 'shield']) };
@@ -198,7 +198,7 @@
   }
   function rollEnemyDrop(floor) {
     const r = Math.random();
-    if (r < 0.55) return { type: 'coin', value: randi(6, 14) + floor * 2 };
+    if (r < 0.55) return { type: 'coin', value: randi(8, 18) + floor * 3 };
     if (r < 0.75) return { type: 'potion' };
     if (r < 0.85) return { type: 'mana' };
     return { type: 'equip', item: rollEquipment(floor) };
@@ -246,7 +246,7 @@
   }
 
   /* ---------------- 属性 / 经验 ---------------- */
-  function computeStats(charId, level, power, equipment) {
+  function computeStats(charId, level, power, equipment, bonus) {
     const c = CLASSES[charId];
     const b = c.base;
     const s = {
@@ -268,6 +268,15 @@
         else s[it.stat] += it.value;
       }
     }
+    if (bonus) {
+      s.hp += bonus.hp || 0;
+      s.mp += bonus.mp || 0;
+      s.atk += bonus.atk || 0;
+      s.def += bonus.def || 0;
+      s.spd += bonus.spd || 0;
+      s.bubbles += bonus.bubbles || 0;
+      s.range += bonus.range || 0;
+    }
     s.bubbles = Math.min(CAP.bubbles, s.bubbles);
     s.range = Math.min(CAP.range, s.range);
     s.spd = Math.min(CAP.speed, s.spd);
@@ -280,6 +289,91 @@
   }
   function xpNeed(level) {
     return 40 + (level - 1) * 35;
+  }
+
+  /* ---------------- 商店 / 扭蛋机 ---------------- */
+  function shopPrice(base, floor) {
+    const f = Math.max(1, floor);
+    return Math.round((base * (1 + (f - 1) * 0.2)) / 5) * 5;
+  }
+  function equipPrice(it, floor) {
+    const base = [25, 50, 100, 200, 350][it.rarity] || 25;
+    return shopPrice(base, floor);
+  }
+  function genShop(floor, player) {
+    const f = Math.max(1, floor);
+    const stats = computeStats(player.charId, player.level, player.power, player.equipment, player.bonus);
+    const items = [];
+    for (let i = 0; i < 4; i++) {
+      const r = Math.random();
+      if (r < 0.35) {
+        const it = rollEquipment(f);
+        items.push({ kind: 'equip', name: it.name, color: it.rarityColor, desc: statLabel(it.stat, it.value) + ' 装备', price: equipPrice(it, f), item: it });
+      } else if (r < 0.50) {
+        items.push({ kind: 'heal', name: '生命药水', color: '#ff8a7a', desc: '立即恢复全部生命', price: shopPrice(15, f) });
+      } else if (r < 0.62) {
+        items.push({ kind: 'mana', name: '魔法药水', color: '#7ab8ff', desc: '立即恢复全部魔法', price: shopPrice(12, f) });
+      } else if (r < 0.76) {
+        items.push({
+          kind: 'bubble', name: '泡泡强化', color: '#6fc8ff',
+          desc: stats.bubbles >= CAP.bubbles ? '已达上限' : '泡泡上限 +1（永久）',
+          price: shopPrice(40, f), maxed: stats.bubbles >= CAP.bubbles,
+        });
+      } else if (r < 0.88) {
+        items.push({
+          kind: 'range', name: '威力强化', color: '#ff9a3e',
+          desc: stats.range >= CAP.range ? '已达上限' : '爆炸范围 +1（永久）',
+          price: shopPrice(50, f), maxed: stats.range >= CAP.range,
+        });
+      } else {
+        items.push({
+          kind: 'revive', name: '复活符', color: '#ffd75e',
+          desc: '死亡时原地复活（50% 生命 + 3 秒无敌）',
+          price: shopPrice(80, f), maxed: player.revive >= 1,
+        });
+      }
+    }
+    return items;
+  }
+
+  const GACHA_POOL = [
+    { w: 16, tier: 'blue',   name: '攻击祝福', desc: '攻击 +1', apply: (b) => { b.atk = (b.atk || 0) + 1; } },
+    { w: 10, tier: 'purple', name: '强击祝福', desc: '攻击 +2', apply: (b) => { b.atk = (b.atk || 0) + 2; } },
+    { w: 14, tier: 'blue',   name: '守护祝福', desc: '防御 +1', apply: (b) => { b.def = (b.def || 0) + 1; } },
+    { w: 8,  tier: 'purple', name: '坚盾祝福', desc: '防御 +2', apply: (b) => { b.def = (b.def || 0) + 2; } },
+    { w: 14, tier: 'blue',   name: '生命祝福', desc: '生命上限 +8', apply: (b) => { b.hp = (b.hp || 0) + 8; } },
+    { w: 10, tier: 'blue',   name: '魔力祝福', desc: '魔法上限 +6', apply: (b) => { b.mp = (b.mp || 0) + 6; } },
+    { w: 10, tier: 'blue',   name: '疾风祝福', desc: '速度 +2', apply: (b) => { b.spd = (b.spd || 0) + 2; } },
+    { w: 4,  tier: 'purple', name: '泡泡祝福', desc: '泡泡上限 +1', apply: (b) => { b.bubbles = (b.bubbles || 0) + 1; } },
+    { w: 4,  tier: 'purple', name: '爆裂祝福', desc: '爆炸范围 +1', apply: (b) => { b.range = (b.range || 0) + 1; } },
+    { w: 10, tier: 'blue',   name: '幸运祝福', desc: '返还本次费用的 50%', flag: 'coinBack', apply: () => {} },
+    { w: 2,  tier: 'gold',   name: '传说祝福', desc: '攻击/防御 +2，生命 +8，魔法 +6，速度 +2', apply: (b) => {
+      b.atk = (b.atk || 0) + 2; b.def = (b.def || 0) + 2;
+      b.hp = (b.hp || 0) + 8; b.mp = (b.mp || 0) + 6; b.spd = (b.spd || 0) + 2;
+    } },
+  ];
+  function pickWeighted(pool) {
+    let s = 0;
+    for (const p of pool) s += p.w;
+    let r = Math.random() * s;
+    for (const p of pool) {
+      r -= p.w;
+      if (r <= 0) return p;
+    }
+    return pool[pool.length - 1];
+  }
+  function gachaCost(n) {
+    return 30 * Math.pow(2, Math.max(0, n));
+  }
+  function rollGacha(player) {
+    const stats = computeStats(player.charId, player.level, player.power, player.equipment, player.bonus);
+    const got = pickWeighted(GACHA_POOL);
+    if ((got.name === '泡泡祝福' && stats.bubbles >= CAP.bubbles) ||
+        (got.name === '爆裂祝福' && stats.range >= CAP.range)) {
+      return { name: '补偿金币', desc: '已达上限，补偿 🪙 60', tier: 'blue', coins: 60, coinBack: false };
+    }
+    got.apply(player.bonus);
+    return { name: got.name, desc: got.desc, tier: got.tier || 'blue', coins: 0, coinBack: got.flag === 'coinBack' };
   }
 
   /* ---------------- 音频（Web Audio 合成，无需外部文件） ---------------- */
@@ -453,6 +547,7 @@
     floorName, floorTheme, floorFlavor, enemiesForFloor,
     rarityWeights, rollRarityIdx, rollEquipment, statLabel, itemScore,
     rollBoxDrop, rollEnemyDrop, genMap, computeStats, xpNeed,
+    shopPrice, equipPrice, genShop, gachaCost, rollGacha, pickWeighted, GACHA_POOL,
     NOTE, TRACKS, audio,
   };
   global.BubbleCore = api;

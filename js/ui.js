@@ -31,6 +31,7 @@
     helpReturn: 'menu',
   };
   const actions = { dx: 0, dy: 0, bubble: false, skill1: false, skill2: false };
+  const shopState = { items: [], gachaN: 0, returnTo: 'clear' };
 
   /* ================= 存档 ================= */
   function saveGame() {
@@ -46,6 +47,8 @@
       power: p.power,
       equipment: p.equipment,
       bag: p.bag,
+      bonus: p.bonus,
+      revive: p.revive,
       totalTime: game.totalTime,
       ts: Date.now(),
     };
@@ -69,6 +72,7 @@
       floor: d.floor,
       level: d.level, xp: d.xp, coins: d.coins, kills: d.kills,
       power: d.power, equipment: d.equipment, bag: d.bag,
+      bonus: d.bonus, revive: d.revive,
     });
   }
 
@@ -163,6 +167,7 @@
       charId: p.charId, floor: w.floor + 1,
       level: p.level, xp: p.xp, coins: p.coins, kills: w.kills,
       power: p.power, equipment: p.equipment, bag: p.bag,
+      bonus: p.bonus, revive: p.revive,
     });
     saveGame();
     showFloorIntro();
@@ -174,6 +179,7 @@
       charId: p.charId, floor: w.floor,
       level: p.level, xp: p.xp, coins: p.coins, kills: w.kills,
       power: p.power, equipment: p.equipment, bag: p.bag,
+      bonus: p.bonus, revive: p.revive,
     });
     saveGame();
     showFloorIntro();
@@ -185,6 +191,7 @@
       charId: p.charId, floor: 6,
       level: p.level, xp: p.xp, coins: p.coins, kills: w.kills,
       power: p.power, equipment: p.equipment, bag: p.bag,
+      bonus: p.bonus, revive: p.revive,
     });
     saveGame();
     showFloorIntro();
@@ -200,21 +207,193 @@
     $('victory-coins').textContent = p.coins;
     show('overlay-victory');
   }
-  function showClear(data) {
-    game.state = 'clear';
-    audio.musicStop();
-    $('clear-floor').textContent = '第 ' + data.floor + ' 层 通关！';
-    $('clear-time').textContent = fmtTime(data.time);
-    $('clear-kills').textContent = data.kills;
-    $('clear-coins').textContent = '+' + data.bonusCoins;
-    $('clear-xp').textContent = '+' + data.bonusXp;
-    show('overlay-clear');
-  }
   function showGameOver() {
     game.state = 'over';
     audio.musicStop();
     $('over-kills').textContent = game.world.floorKills;
     show('overlay-over');
+  }
+
+  /* ================= 商店 / 神秘商人 / 塔罗牌 ================= */
+  const MERCHANT_LINES = [
+    '呵呵，又见面了……要看看今天的好货吗？',
+    '翻开卡片吧，命运在等待着你。',
+    '想试试命运的力量吗？每抽一次，价格翻倍哦……',
+    '金币是好东西，但祝福更珍贵，不是吗？',
+    '你的手气如何？老夫也很好奇。',
+  ];
+  function openShop(from, clearData) {
+    if (!game.world) return;
+    game.state = 'shop';
+    audio.musicStop();
+    shopState.returnTo = from || 'clear';
+    shopState.lastClear = clearData || null;
+    shopState.items = C.genShop(game.world.floor, game.world.player);
+    shopState.gachaN = 0;
+    $('gacha-result').innerHTML = '';
+    $('merchant-bubble').textContent = C.pick(MERCHANT_LINES);
+    buildShop();
+    show('overlay-shop');
+  }
+  function closeShop() {
+    if (game.state !== 'shop' || shopState.returnTo !== 'victory') return;
+    game.state = 'victory';
+    show('overlay-victory');
+  }
+  function buildShop() {
+    const w = game.world, p = w.player;
+    $('shop-floor').textContent = (w.floor <= FLOORS.length ? '第 ' + w.floor + ' 关 · ' : '') + w.name + '（物价随层数上涨）';
+    $('shop-coins').textContent = p.coins;
+    // 通关统计（通关直开商店时显示）
+    const statsEl = $('shop-stats');
+    if (shopState.lastClear) {
+      statsEl.classList.remove('hidden');
+      $('shop-stats-time').textContent = fmtTime(shopState.lastClear.time);
+      $('shop-stats-kills').textContent = shopState.lastClear.kills;
+      $('shop-stats-coins').textContent = '+' + shopState.lastClear.bonusCoins;
+      $('shop-stats-xp').textContent = '+' + shopState.lastClear.bonusXp;
+    } else {
+      statsEl.classList.add('hidden');
+    }
+    // 返回按钮仅在胜利后逛商店时显示
+    $('btn-shop-back').classList.toggle('hidden', shopState.returnTo !== 'victory');
+    // 翻牌商品
+    const box = $('shop-items');
+    box.innerHTML = '';
+    shopState.items.forEach((it, i) => {
+      const card = document.createElement('div');
+      card.className = 'shop-card' + (it.flipped ? ' flipped' : '') + (it.sold || it.maxed ? ' sold' : '');
+      card.innerHTML =
+        '<div class="shop-card-inner">' +
+          '<div class="shop-card-face shop-card-cover">' +
+            '<div class="card-mark">?</div>' +
+            '<div class="card-hint">点击翻开</div>' +
+          '</div>' +
+          '<div class="shop-card-face shop-card-front">' +
+            '<div class="shop-item-name" style="color:' + (it.color || '#ffd75e') + '">' + it.name + '</div>' +
+            '<div class="shop-item-desc">' + it.desc + '</div>' +
+            '<button class="btn shop-buy">🪙 ' + it.price + '</button>' +
+          '</div>' +
+        '</div>';
+      card.onclick = () => {
+        if (!it.flipped) { it.flipped = true; card.classList.add('flipped'); audio.sfx('click'); }
+      };
+      const btn = card.querySelector('.shop-buy');
+      if (it.sold) btn.textContent = '✓ 已售出';
+      else if (it.maxed) btn.textContent = '已满';
+      else btn.onclick = (ev) => { ev.stopPropagation(); audio.sfx('click'); buyItem(i); };
+      box.appendChild(card);
+    });
+    // 神秘商人
+    const cost = C.gachaCost(shopState.gachaN);
+    $('gacha-cost').textContent = cost;
+    $('gacha-times').textContent = '已抽 ' + shopState.gachaN + ' 次';
+    const gbtn = $('btn-gacha');
+    gbtn.textContent = '🔮 请教神秘商人（🪙 ' + cost + '）';
+    gbtn.disabled = p.coins < cost;
+    gbtn.onclick = doGacha;
+  }
+  function buyItem(i) {
+    const w = game.world, p = w.player;
+    const it = shopState.items[i];
+    if (!it || it.sold) return;
+    if (p.coins < it.price) { toast('金币不足！'); return; }
+    p.coins -= it.price;
+    it.sold = true;
+    switch (it.kind) {
+      case 'equip': w.gainEquipment(it.item, null); break;
+      case 'heal': p.hp = p.maxHp; toast('生命已回满！'); audio.sfx('heal'); break;
+      case 'mana': p.mp = p.maxMp; toast('魔法已回满！'); audio.sfx('heal'); break;
+      case 'bubble': p.power.bubbles++; p.recalc(); toast('泡泡上限 +1（永久）！'); break;
+      case 'range': p.power.range++; p.recalc(); toast('爆炸范围 +1（永久）！'); break;
+      case 'revive': p.revive = Math.min(1, p.revive + 1); toast('获得复活符 ×1！死亡时将原地复活'); audio.sfx('equip'); break;
+    }
+    saveGame();
+    buildShop();
+  }
+  function doGacha() {
+    const w = game.world, p = w.player;
+    const cost = C.gachaCost(shopState.gachaN);
+    if (p.coins < cost) { toast('金币不足！'); return; }
+    p.coins -= cost;
+    const res = C.rollGacha(p);
+    if (res.coins) p.coins += res.coins;
+    if (res.coinBack) p.coins += Math.ceil(cost / 2);
+    p.recalc();
+    saveGame();
+    shopState.gachaN++;
+    $('gacha-result').innerHTML =
+      '<span class="gacha-glow">' + res.name + '！</span> ' + res.desc;
+    openTarot(res);
+  }
+  /* ----- 塔罗牌抽卡动画 ----- */
+  let tarotTimers = [];
+  function openTarot(res) {
+    if (game.state !== 'shop') return;
+    game.state = 'tarot';
+    tarotTimers.forEach(clearTimeout);
+    tarotTimers = [];
+    const tier = res.tier || 'blue';
+    const extra = res.coins ? '（补偿 🪙 ' + res.coins + '）' : (res.coinBack ? '（返还 🪙 ' + Math.ceil(C.gachaCost(shopState.gachaN - 1) / 2) + '）' : '');
+    const cardEl = $('tarot-card');
+    cardEl.classList.remove('flipped', 'tier-blue', 'tier-purple', 'tier-gold', 'fly-in');
+    $('tarot-rays').classList.remove('show');
+    $('tarot-legend').classList.remove('show');
+    $('btn-tarot-accept').classList.add('hidden');
+    $('tarot-particles').innerHTML = '';
+    $('tarot-name').textContent = res.name;
+    $('tarot-desc').textContent = res.desc + extra;
+    show('overlay-tarot');
+    void cardEl.offsetWidth; // 强制 reflow 重启动画
+    cardEl.classList.add('fly-in');
+    tarotTimers.push(setTimeout(() => {
+      cardEl.classList.add('flipped', 'tier-' + tier);
+      audio.sfx('equip');
+      if (tier === 'gold') {
+        tarotTimers.push(setTimeout(() => {
+          $('tarot-rays').classList.add('show');
+          $('tarot-legend').classList.add('show');
+          spawnGoldParticles();
+          audio.sfx('levelup');
+        }, 550));
+        tarotTimers.push(setTimeout(() => {
+          $('btn-tarot-accept').classList.remove('hidden');
+        }, 1800));
+      } else {
+        tarotTimers.push(setTimeout(() => {
+          $('btn-tarot-accept').classList.remove('hidden');
+        }, 1200));
+      }
+    }, 650));
+  }
+  function spawnGoldParticles() {
+    const box = $('tarot-particles');
+    box.innerHTML = '';
+    for (let i = 0; i < 26; i++) {
+      const s = document.createElement('i');
+      s.style.left = (Math.random() * 100) + '%';
+      s.style.top = (Math.random() * 100) + '%';
+      s.style.setProperty('--gx', (Math.random() * 480 - 240) + 'px');
+      s.style.setProperty('--gy', (-60 - Math.random() * 260) + 'px');
+      s.style.animationDelay = (Math.random() * 1.2) + 's';
+      s.style.animationDuration = (1.4 + Math.random() * 1.4) + 's';
+      box.appendChild(s);
+    }
+  }
+  function closeTarot() {
+    if (game.state !== 'tarot') return;
+    tarotTimers.forEach(clearTimeout);
+    tarotTimers = [];
+    game.state = 'shop';
+    buildShop();
+    show('overlay-shop');
+  }
+  function shopNext() {
+    if (game.state !== 'shop') return;
+    audio.sfx('click');
+    const w = game.world;
+    if (w.floor === 5) enterEndless();
+    else nextFloor();
   }
   function openPause() {
     if (game.state !== 'play') return;
@@ -258,7 +437,7 @@
     const evs = w.drainEvents();
     for (const ev of evs) {
       if (ev.type === 'toast') toast(ev.data);
-      else if (ev.type === 'clear') { saveGame(); showClear(ev.data); }
+      else if (ev.type === 'clear') { saveGame(); openShop('clear', ev.data); }
       else if (ev.type === 'dead') { saveGame(); showGameOver(); }
     }
   }
@@ -321,6 +500,10 @@
     $('inv-bubbles').textContent = p.maxBubbles;
     $('inv-range').textContent = p.range;
     $('inv-coins').textContent = p.coins;
+    $('inv-revive').textContent = p.revive > 0 ? '×' + p.revive : '无';
+    $('inv-bonus').textContent = (p.bonus && Object.keys(p.bonus).length)
+      ? Object.keys(p.bonus).map((k) => ({ atk: '攻击', def: '防御', hp: '生命', mp: '魔法', spd: '速度', bubbles: '泡泡', range: '范围' }[k] || k) + '+' + p.bonus[k]).join('　')
+      : '无（商店扭蛋机可获得）';
     const slotNames = { weapon: '武器', armor: '护甲', boots: '靴子', trinket: '饰品' };
     const eqBox = $('inv-equipped');
     eqBox.innerHTML = '';
@@ -505,14 +688,18 @@
       if (e.code === 'Escape' || e.code === 'KeyP') resumeGame();
     } else if (st === 'inv') {
       if (e.code === 'Escape' || e.code === 'KeyI') closeInventory();
-    } else if (st === 'clear') {
-      if (e.code === 'Space' || e.code === 'Enter') nextFloor();
+    } else if (st === 'shop') {
+      if (e.code === 'Enter') shopNext();
+      else if (e.code === 'Escape') closeShop();
+    } else if (st === 'tarot') {
+      if (e.code === 'Enter' || e.code === 'Escape' || e.code === 'Space') closeTarot();
     } else if (st === 'over') {
       if (e.code === 'Enter') retryFloor();
       else if (e.code === 'Escape') toMenu();
     } else if (st === 'victory') {
       if (e.code === 'Enter') enterEndless();
       else if (e.code === 'Escape') toMenu();
+      else if (e.code === 'KeyB') openShop('victory');
     } else if (st === 'char') {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') { selIdx = (selIdx + 2) % 3; selectChar(selIdx); }
       else if (e.code === 'ArrowRight' || e.code === 'KeyD') { selIdx = (selIdx + 1) % 3; selectChar(selIdx); }
@@ -634,9 +821,12 @@
     $('btn-pause-help').onclick = () => { audio.sfx('click'); showHelp('pause'); };
     $('btn-over-retry').onclick = () => { audio.sfx('click'); retryFloor(); };
     $('btn-over-menu').onclick = () => { audio.sfx('click'); toMenu(); };
-    $('btn-clear-next').onclick = () => { audio.sfx('click'); nextFloor(); };
     $('btn-victory-endless').onclick = () => { audio.sfx('click'); enterEndless(); };
     $('btn-victory-menu').onclick = () => { audio.sfx('click'); saveGame(); toMenu(); };
+    $('btn-victory-shop').onclick = () => { audio.sfx('click'); openShop('victory'); };
+    $('btn-shop-next').onclick = shopNext;
+    $('btn-shop-back').onclick = closeShop;
+    $('btn-tarot-accept').onclick = closeTarot;
     $('btn-inv-close').onclick = closeInventory;
     $('btn-help-back').onclick = () => { audio.sfx('click'); closeHelp(); };
     $('btn-hud-inv').onclick = () => { audio.sfx('click'); openInventory(); };
@@ -656,4 +846,12 @@
     requestAnimationFrame(loop);
   }
   document.addEventListener('DOMContentLoaded', boot);
+
+  // 调试钩子（浏览器控制台可用，方便测试与排查）
+  window.__bubbleDebug = {
+    get game() { return game; },
+    get shopState() { return shopState; },
+    openShop, closeShop, buyItem, doGacha, buildShop,
+    openTarot, closeTarot,
+  };
 })();

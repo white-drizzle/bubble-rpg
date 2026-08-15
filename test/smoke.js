@@ -244,6 +244,7 @@ ok('放泡泡站定 0.5s 后向各方向移动：无瞬移、永不出界', () =
       maxJump = Math.max(maxJump, Math.hypot(p.x - px, p.y - py));
       assert(p.x >= p.radius - 0.5 && p.x <= C.W - p.radius + 0.5, '玩家 x 出界: ' + p.x);
       assert(p.y >= p.radius - 0.5 && p.y <= C.H - p.radius + 0.5, '玩家 y 出界: ' + p.y);
+      assert(w.map[C.tileY(p.y)][C.tileX(p.x)] !== C.TILE.WALL, '卡进墙里了: (' + C.tileX(p.x) + ',' + C.tileY(p.y) + ')');
     }
   }
   assert(maxJump <= 25, '出现坐标瞬移：单帧位移 ' + maxJump.toFixed(1) + 'px');
@@ -270,8 +271,122 @@ ok('随机乱走 60 秒（含放泡泡）：坐标永不出界', () => {
     w.update(1 / 60, Math.random() < 0.1 ? { dx: d[0], dy: d[1], bubble: true } : { dx: d[0], dy: d[1] });
     assert(p.x >= p.radius - 0.5 && p.x <= C.W - p.radius + 0.5, '玩家 x 出界: ' + p.x);
     assert(p.y >= p.radius - 0.5 && p.y <= C.H - p.radius + 0.5, '玩家 y 出界: ' + p.y);
+    assert(w.map[C.tileY(p.y)][C.tileX(p.x)] !== C.TILE.WALL, '卡进墙里了: (' + C.tileX(p.x) + ',' + C.tileY(p.y) + ')');
     if (w.status !== 'play') break;
   }
+});
+
+console.log('== 商店 / 扭蛋机 / 复活符 ==');
+
+ok('商店：每层随机 4 件商品，价格随层数上涨', () => {
+  const w = makeWorld({ floor: 1, coins: 1000 });
+  const s1 = C.genShop(1, w.player);
+  const s5 = C.genShop(5, w.player);
+  assert.strictEqual(s1.length, 4);
+  assert.strictEqual(s5.length, 4);
+  const avg = (s) => s.reduce((a, b) => a + b.price, 0) / s.length;
+  assert(avg(s5) > avg(s1), '高层商店应更贵');
+  for (const it of s1.concat(s5)) {
+    assert(it.price >= 10 && it.name.length > 0);
+    if (it.kind === 'equip') assert(it.item && it.item.name === it.name);
+  }
+  // 多轮生成不崩溃且种类合法
+  const kinds = new Set(['equip', 'heal', 'mana', 'bubble', 'range', 'revive']);
+  for (let i = 0; i < 50; i++) {
+    for (const it of C.genShop(3, w.player)) assert(kinds.has(it.kind), '未知商品 ' + it.kind);
+  }
+});
+
+ok('扭蛋机：费用翻倍，祝福永久生效', () => {
+  const w = makeWorld();
+  const p = w.player;
+  assert.strictEqual(C.gachaCost(0), 30);
+  assert.strictEqual(C.gachaCost(1), 60);
+  assert.strictEqual(C.gachaCost(2), 120);
+  assert.strictEqual(C.gachaCost(4), 480);
+  const atk0 = p.atk;
+  // 大量抽取必然出现属性祝福（并验证统计叠加到属性上）
+  let attrHits = 0, coinBackHits = 0;
+  for (let i = 0; i < 60; i++) {
+    const r = C.rollGacha(p);
+    assert(r.name && r.desc);
+    assert(['blue', 'purple', 'gold'].includes(r.tier), '品质非法: ' + r.tier);
+    if (r.coinBack) coinBackHits++;
+    if (!r.coins && !r.coinBack) attrHits++;
+  }
+  p.recalc();
+  assert(attrHits > 0, '应能抽到属性祝福');
+  assert(p.atk > atk0 || p.def > C.CLASSES.warrior.base.def || p.maxHp > C.CLASSES.warrior.base.hp, '祝福应提升属性');
+  assert(coinBackHits >= 0);
+});
+
+ok('扭蛋池：品质分级与传说概率', () => {
+  for (const g of C.GACHA_POOL) {
+    assert(['blue', 'purple', 'gold'].includes(g.tier), '扭蛋项缺品质: ' + g.name);
+  }
+  const gold = C.GACHA_POOL.find((g) => g.tier === 'gold');
+  assert(gold && gold.name === '传说祝福', '金色应为传说祝福');
+  const totalW = C.GACHA_POOL.reduce((a, b) => a + b.w, 0);
+  assert(Math.abs(gold.w / totalW - 0.02) < 0.002, '金色概率应约 2%');
+  // 抽到传说时返回 tier gold
+  for (let i = 0; i < 4000; i++) {
+    const r = C.rollGacha(makeWorld().player);
+    if (r.tier === 'gold') return;
+  }
+  assert(false, '4000 次未抽到金色（概率异常）');
+});
+
+ok('物价：调低后符合玩家收入水平', () => {
+  assert.strictEqual(C.shopPrice(15, 1), 15);
+  assert.strictEqual(C.shopPrice(15, 2), 20);
+  assert.strictEqual(C.shopPrice(15, 5), 25);
+  assert.strictEqual(C.shopPrice(40, 1), 40);
+  assert.strictEqual(C.shopPrice(80, 1), 80);
+  assert.strictEqual(C.equipPrice({ rarity: 0 }, 1), 25);
+  assert.strictEqual(C.equipPrice({ rarity: 4 }, 1), 350);
+  assert.strictEqual(C.gachaCost(0), 30);
+  // 第 1 关结算约 40 金币（已上调掉落）应能买 1 件便宜货 + 1 次扭蛋
+  assert(C.shopPrice(15, 1) + C.gachaCost(0) <= 45);
+});
+
+ok('扭蛋机：满级泡泡/范围祝福转为金币补偿', () => {
+  const w = makeWorld();
+  const p = w.player;
+  p.bonus = { bubbles: 99, range: 99 }; // 拉满触发补偿分支
+  let sawComp = false;
+  for (let i = 0; i < 200; i++) {
+    const r = C.rollGacha(p);
+    if (r.name === '补偿金币') { sawComp = true; assert.strictEqual(r.coins, 60); break; }
+  }
+  assert(sawComp, '满级时应出现金币补偿');
+});
+
+ok('computeStats：永久祝福叠加', () => {
+  const base = C.computeStats('warrior', 1, {}, {}, {});
+  const boosted = C.computeStats('warrior', 1, {}, {}, { atk: 5, def: 3, hp: 20, bubbles: 1 });
+  assert.strictEqual(boosted.atk, base.atk + 5);
+  assert.strictEqual(boosted.def, base.def + 3);
+  assert.strictEqual(boosted.hp, base.hp + 20);
+  assert.strictEqual(boosted.bubbles, Math.min(C.CAP.bubbles, base.bubbles + 1));
+});
+
+ok('复活符：死亡时原地复活且状态保持', () => {
+  const w = makeWorld();
+  const p = w.player;
+  p.revive = 1;
+  p.hp = p.maxHp;
+  p.takeHit(9999, w);
+  assert.strictEqual(w.status, 'play', '应复活而不是死亡');
+  assert.strictEqual(p.revive, 0, '复活符应被消耗');
+  assert(!p.dead);
+  assert(p.hp > 0 && p.hp <= p.maxHp);
+  assert(p.hp <= Math.round(p.maxHp * 0.5), '复活后应为 50% 生命');
+  assert(p.invuln > 2.5, '复活后应有 3 秒无敌');
+  assert(w.drainEvents().some((ev) => ev.type === 'toast'), '应有复活提示');
+  // 没有复活符时正常死亡
+  p.invuln = 0;
+  p.takeHit(9999, w);
+  assert.strictEqual(w.status, 'dead');
 });
 
 console.log('\n全部通过：' + passed + ' 项冒烟测试 \u2713');

@@ -25,6 +25,8 @@
       this.power = Object.assign({ bubbles: 0, range: 0, speed: 0 }, opts.power);
       this.equipment = opts.equipment || {};
       this.bag = opts.bag || [];
+      this.bonus = Object.assign({}, opts.bonus);   // 扭蛋机永久祝福
+      this.revive = opts.revive || 0;              // 复活符数量（0/1）
       this.radius = 15;
       this.x = 0; this.y = 0;
       this.facing = { x: 0, y: 1 };
@@ -39,7 +41,7 @@
       this.mp = this.maxMp;
     }
     recalc() {
-      const s = computeStats(this.charId, this.level, this.power, this.equipment);
+      const s = computeStats(this.charId, this.level, this.power, this.equipment, this.bonus);
       this.maxHp = s.hp; this.maxMp = s.mp;
       this.atk = s.atk; this.def = s.def;
       this.spd = s.spd; this.maxBubbles = s.bubbles; this.range = s.range;
@@ -528,55 +530,53 @@
     moveEntity(e, dx, dy) {
       const bx = e.x, by = e.y;
       e.x += dx;
-      this.resolveAxis(e, true, Math.sign(dx));
       e.y += dy;
-      this.resolveAxis(e, false, Math.sign(dy));
+      this.resolveCollisions(e);
       const moved = Math.hypot(e.x - bx, e.y - by);
       const want = Math.hypot(dx, dy);
       return want > 0.01 && moved < want * 0.3;
     }
 
-    resolveAxis(e, horiz, sign) {
+    /* 圆形碰撞体 vs 阻挡格：最小穿透向量解析。
+       对每个与圆心重叠的阻挡格，沿「圆心 → 格内最近点」方向推出到半径距离；
+       迭代多轮收敛。推出永远指向最近边缘，因此：
+       - 贴墙滑动平滑无抖动（距离 == 半径时不处理）
+       - 撞墙只回弹穿透量，不会瞬移
+       - 被推出后不可能跳入相邻阻挡格（消除"卡进墙里"）
+       - 斜向移动自动沿障碍物滑行 */
+    resolveCollisions(e, maxIter) {
       const r = Math.max(1, e.radius - 1);
-      const x0 = Math.floor((e.x - r) / T), x1 = Math.floor((e.x + r) / T);
-      const y0 = Math.floor((e.y - r) / T), y1 = Math.floor((e.y + r) / T);
-      for (let ty = y0; ty <= y1; ty++) {
-        for (let tx = x0; tx <= x1; tx++) {
-          if (!this.blocks(e, tx, ty)) continue;
-          const rx = tx * T, ry = ty * T;
-          const nx = clamp(e.x, rx, rx + T), ny = clamp(e.y, ry, ry + T);
-          const ddx = e.x - nx, ddy = e.y - ny;
-          if (ddx * ddx + ddy * ddy >= r * r) continue;
-          if (horiz) {
-            // 沿本帧移动方向的反向推出；圆心已越过格子中线说明正在穿出，跳过（防止相邻格互相推挤抖动）
-            if (sign > 0) {
-              if (e.x > rx + T / 2) continue;
-              e.x = rx - r;
-            } else if (sign < 0) {
-              if (e.x < rx + T / 2) continue;
-              e.x = rx + T + r;
+      const iters = maxIter || 3;
+      for (let iter = 0; iter < iters; iter++) {
+        let any = false;
+        const x0 = Math.floor((e.x - r) / T), x1 = Math.floor((e.x + r) / T);
+        const y0 = Math.floor((e.y - r) / T), y1 = Math.floor((e.y + r) / T);
+        for (let ty = y0; ty <= y1; ty++) {
+          for (let tx = x0; tx <= x1; tx++) {
+            if (!this.blocks(e, tx, ty)) continue;
+            const rx = tx * T, ry = ty * T;
+            const nx = clamp(e.x, rx, rx + T), ny = clamp(e.y, ry, ry + T);
+            const ddx = e.x - nx, ddy = e.y - ny;
+            const dist = Math.hypot(ddx, ddy);
+            if (dist >= r) continue;
+            any = true;
+            if (dist > 0.0001) {
+              // 沿最近点方向推出，恰好回到"贴边 r 处"
+              const push = (r - dist) / dist;
+              e.x += ddx * push;
+              e.y += ddy * push;
             } else {
-              // 该轴本帧无位移：仅修正 ≤2px 的轻微擦碰，避免把正在从另一轴穿出的玩家弹飞
-              const dMin = Math.min(e.x - rx, rx + T - e.x);
-              const depth = r - dMin;
-              if (depth <= 0 || depth > 2) continue;
-              e.x = e.x < rx + T / 2 ? rx - r : rx + T + r;
-            }
-          } else {
-            if (sign > 0) {
-              if (e.y > ry + T / 2) continue;
-              e.y = ry - r;
-            } else if (sign < 0) {
-              if (e.y < ry + T / 2) continue;
-              e.y = ry + T + r;
-            } else {
-              const dMin = Math.min(e.y - ry, ry + T - e.y);
-              const depth = r - dMin;
-              if (depth <= 0 || depth > 2) continue;
-              e.y = e.y < ry + T / 2 ? ry - r : ry + T + r;
+              // 圆心恰在格子内部（异常状态兜底）：沿穿透最浅的轴推出
+              const dl = e.x - rx, dr = rx + T - e.x, dt = e.y - ry, db = ry + T - e.y;
+              const m = Math.min(dl, dr, dt, db);
+              if (m === dl) e.x = rx - r;
+              else if (m === dr) e.x = rx + T + r;
+              else if (m === dt) e.y = ry - r;
+              else e.y = ry + T + r;
             }
           }
         }
+        if (!any) break;
       }
     }
 
@@ -643,10 +643,24 @@
     }
 
     onPlayerDeath() {
-      this.player.dead = true;
+      const p = this.player;
+      if (p.revive > 0) {
+        // 复活符：原地复活（50% 生命 + 3 秒无敌）
+        p.revive--;
+        p.dead = false;
+        p.hp = Math.round(p.maxHp * 0.5);
+        p.mp = p.maxMp;
+        p.invuln = Math.max(p.invuln, 3);
+        this.event('toast', '复活符生效！原地复活，3 秒无敌！');
+        this.floatText(p.x, p.y - 30, '复活！', '#ffd75e', 18);
+        this.spawnRing(p.x, p.y, '#ffd75e');
+        audio.sfx('heal');
+        return;
+      }
+      p.dead = true;
       this.status = 'dead';
-      this.player.coins = Math.floor(this.player.coins * 0.85);
-      this.event('dead', { floorKills: this.floorKills, coins: this.player.coins });
+      p.coins = Math.floor(p.coins * 0.85);
+      this.event('dead', { floorKills: this.floorKills, coins: p.coins });
       audio.sfx('die');
     }
 
@@ -676,7 +690,7 @@
       if (this.status !== 'play') return;
       this.status = 'clear';
       const bonusXp = 30 + this.floor * 10;
-      const bonusCoins = 20 + this.floor * 8;
+      const bonusCoins = 30 + this.floor * 12;
       this.player.addXp(bonusXp, this);
       this.player.coins += bonusCoins;
       this.event('clear', {
