@@ -227,4 +227,51 @@ ok('无尽模式：敌人生成与命名', () => {
   assert(w.status === 'play' || w.status === 'dead' || w.status === 'clear', '状态合法');
 });
 
+console.log('== 回归：放泡泡坐标瞬移 bug ==');
+
+ok('放泡泡站定 0.5s 后向各方向移动：无瞬移、永不出界', () => {
+  const w = makeWorld();
+  const p = w.player;
+  w.addBubble(1, 1, 'player');
+  p.bubblesActive++;
+  for (let i = 0; i < 30; i++) w.update(1 / 60, { dx: 0, dy: 0 }); // 站在自己的泡泡上不动
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+  let maxJump = 0;
+  for (const d of dirs) {
+    for (let i = 0; i < 120; i++) {
+      const px = p.x, py = p.y;
+      w.update(1 / 60, { dx: d[0], dy: d[1] });
+      maxJump = Math.max(maxJump, Math.hypot(p.x - px, p.y - py));
+      assert(p.x >= p.radius - 0.5 && p.x <= C.W - p.radius + 0.5, '玩家 x 出界: ' + p.x);
+      assert(p.y >= p.radius - 0.5 && p.y <= C.H - p.radius + 0.5, '玩家 y 出界: ' + p.y);
+    }
+  }
+  assert(maxJump <= 25, '出现坐标瞬移：单帧位移 ' + maxJump.toFixed(1) + 'px');
+});
+
+ok('离开泡泡格后：泡泡实心挡住自己且贴边不抖动', () => {
+  const w = makeWorld({ charId: 'mage' });
+  const p = w.player;
+  w.addBubble(1, 1, 'player');
+  p.bubblesActive++;
+  for (let i = 0; i < 36; i++) w.update(1 / 60, { dx: 1, dy: 0 }); // 向右离开泡泡格
+  for (let i = 0; i < 48; i++) w.update(1 / 60, { dx: -1, dy: 0 }); // 向左往回撞自己的泡泡
+  const edge = 1 * C.T + C.T + (p.radius - 1); // 泡泡格 (1,1) 右边缘 + 玩家半径
+  assert.strictEqual(C.tileX(p.x), 2, '应被挡在泡泡右侧，实际 x=' + p.x);
+  assert(Math.abs(p.x - edge) <= 2, '应贴住泡泡边缘，实际 x=' + p.x + ' 期望 ' + edge);
+});
+
+ok('随机乱走 60 秒（含放泡泡）：坐标永不出界', () => {
+  const w = makeWorld({ level: 15 });
+  const p = w.player;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1], [0, 0]];
+  for (let i = 0; i < 3600; i++) {
+    const d = dirs[Math.floor(Math.random() * dirs.length)];
+    w.update(1 / 60, Math.random() < 0.1 ? { dx: d[0], dy: d[1], bubble: true } : { dx: d[0], dy: d[1] });
+    assert(p.x >= p.radius - 0.5 && p.x <= C.W - p.radius + 0.5, '玩家 x 出界: ' + p.x);
+    assert(p.y >= p.radius - 0.5 && p.y <= C.H - p.radius + 0.5, '玩家 y 出界: ' + p.y);
+    if (w.status !== 'play') break;
+  }
+});
+
 console.log('\n全部通过：' + passed + ' 项冒烟测试 \u2713');

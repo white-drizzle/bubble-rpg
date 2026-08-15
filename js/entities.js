@@ -7,7 +7,7 @@
   'use strict';
   const C = (typeof window !== 'undefined' && window.BubbleCore) ? window.BubbleCore : require('./core.js');
   const {
-    T, COLS, ROWS, TILE, CAP,
+    T, COLS, ROWS, W, H, TILE, CAP,
     clamp, rand, randi, pick, dist2, tileX, tileY, nextId,
     CLASSES, HEAL_SKILL, ENEMIES,
     genMap, enemiesForFloor, floorName, floorTheme, floorFlavor,
@@ -53,6 +53,9 @@
     update(dt, world, actions) {
       if (this.dead) return;
       actions = actions || {};
+      // 兜底：任何情况下都不允许被推出地图
+      this.x = clamp(this.x, this.radius, W - this.radius);
+      this.y = clamp(this.y, this.radius, H - this.radius);
       this.invuln -= dt; this.shieldT -= dt; this.dashT -= dt;
       this.skill1Cd -= dt; this.skill2Cd -= dt;
       this.mp = Math.min(this.maxMp, this.mp + 2.5 * dt);
@@ -297,6 +300,7 @@
       this.range = owner === 'boss' ? 3 : world.player.range;
       this.age = 0;
       this.dead = false;
+      this.ownerLeft = false; // 放置者是否已完全离开本格（离开后泡泡对其永久实心）
     }
     update(dt, world) {
       this.age += dt;
@@ -507,9 +511,15 @@
       const b = this.bubbleAt(tx, ty);
       if (b) {
         if (e.fly) return false;
-        // 刚放置的自己的泡泡：离开格子前不挡自己
-        if (e === this.player && b.owner === 'player' && b.age < 0.4 &&
-            tileX(e.x) === tx && tileY(e.y) === ty) return false;
+        if (b.owner === 'player' && e === this.player) {
+          // 自己的泡泡：放置后只要圆心还在该格矩形内就不阻挡；
+          // 一旦完全离开，泡泡对放置者永久实心（经典泡泡堂手感）
+          const overlap = e.x >= b.tx * T && e.x <= (b.tx + 1) * T &&
+                          e.y >= b.ty * T && e.y <= (b.ty + 1) * T;
+          if (overlap && !b.ownerLeft) return false;
+          if (!overlap) b.ownerLeft = true;
+          return true;
+        }
         return true;
       }
       return false;
@@ -518,15 +528,15 @@
     moveEntity(e, dx, dy) {
       const bx = e.x, by = e.y;
       e.x += dx;
-      this.resolveAxis(e, true);
+      this.resolveAxis(e, true, Math.sign(dx));
       e.y += dy;
-      this.resolveAxis(e, false);
+      this.resolveAxis(e, false, Math.sign(dy));
       const moved = Math.hypot(e.x - bx, e.y - by);
       const want = Math.hypot(dx, dy);
       return want > 0.01 && moved < want * 0.3;
     }
 
-    resolveAxis(e, horiz) {
+    resolveAxis(e, horiz, sign) {
       const r = Math.max(1, e.radius - 1);
       const x0 = Math.floor((e.x - r) / T), x1 = Math.floor((e.x + r) / T);
       const y0 = Math.floor((e.y - r) / T), y1 = Math.floor((e.y + r) / T);
@@ -537,8 +547,35 @@
           const nx = clamp(e.x, rx, rx + T), ny = clamp(e.y, ry, ry + T);
           const ddx = e.x - nx, ddy = e.y - ny;
           if (ddx * ddx + ddy * ddy >= r * r) continue;
-          if (horiz) e.x = ddx > 0 ? rx + T + r : rx - r;
-          else e.y = ddy > 0 ? ry + T + r : ry - r;
+          if (horiz) {
+            // 沿本帧移动方向的反向推出；圆心已越过格子中线说明正在穿出，跳过（防止相邻格互相推挤抖动）
+            if (sign > 0) {
+              if (e.x > rx + T / 2) continue;
+              e.x = rx - r;
+            } else if (sign < 0) {
+              if (e.x < rx + T / 2) continue;
+              e.x = rx + T + r;
+            } else {
+              // 该轴本帧无位移：仅修正 ≤2px 的轻微擦碰，避免把正在从另一轴穿出的玩家弹飞
+              const dMin = Math.min(e.x - rx, rx + T - e.x);
+              const depth = r - dMin;
+              if (depth <= 0 || depth > 2) continue;
+              e.x = e.x < rx + T / 2 ? rx - r : rx + T + r;
+            }
+          } else {
+            if (sign > 0) {
+              if (e.y > ry + T / 2) continue;
+              e.y = ry - r;
+            } else if (sign < 0) {
+              if (e.y < ry + T / 2) continue;
+              e.y = ry + T + r;
+            } else {
+              const dMin = Math.min(e.y - ry, ry + T - e.y);
+              const depth = r - dMin;
+              if (depth <= 0 || depth > 2) continue;
+              e.y = e.y < ry + T / 2 ? ry - r : ry + T + r;
+            }
+          }
         }
       }
     }
@@ -795,7 +832,11 @@
       this.shake = Math.max(0, this.shake - dt * 14);
       if (this.status === 'play') {
         this.player.update(dt, this, actions);
-        for (const e of this.enemies) e.update(dt, this);
+        for (const e of this.enemies) {
+          e.update(dt, this);
+          e.x = clamp(e.x, e.radius, W - e.radius);
+          e.y = clamp(e.y, e.radius, H - e.radius);
+        }
         for (const b of this.bubbles.slice()) b.update(dt, this);
         this.bubbles = this.bubbles.filter((b) => !b.dead);
         for (const pk of this.pickups) pk.update(dt);
