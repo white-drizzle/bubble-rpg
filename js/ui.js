@@ -80,9 +80,15 @@
   function show(id) {
     document.querySelectorAll('.overlay').forEach((o) => o.classList.add('hidden'));
     $(id).classList.remove('hidden');
+    syncTouchControls();
   }
   function hideOverlays() {
     document.querySelectorAll('.overlay').forEach((o) => o.classList.add('hidden'));
+    syncTouchControls();
+  }
+  function syncTouchControls() {
+    // 触屏控件只在战斗状态显示（覆盖层打开时隐藏）
+    $('touch-controls').classList.toggle('visible', game.state === 'play');
   }
   function toast(msg) {
     const box = $('toasts');
@@ -148,8 +154,8 @@
     show('overlay-intro');
   }
   function beginPlay() {
-    hideOverlays();
     game.state = 'play';
+    hideOverlays();
     game.world.player.healFull();
     playMusic();
     updateHud();
@@ -403,8 +409,8 @@
     show('overlay-pause');
   }
   function resumeGame() {
-    hideOverlays();
     game.state = 'play';
+    hideOverlays();
     playMusic();
   }
   function toggleMute() {
@@ -776,14 +782,21 @@
   }
 
   /* ================= 适配缩放 ================= */
+  let fitTimer = null;
   function fitStage() {
-    const s = Math.min(
-      (window.innerWidth - 12) / (W + 16),
-      (window.innerHeight - 12) / stage.offsetHeight
-    );
-    stage.style.transform = 'translate(-50%, -50%) scale(' + Math.min(1, s) + ')';
+    if (fitTimer) return;
+    fitTimer = setTimeout(() => {
+      fitTimer = null;
+      // 按舞台实际布局尺寸缩放（横屏侧栏布局 / 竖屏上下布局自动适配）
+      const s = Math.min(
+        (window.innerWidth - 8) / stage.offsetWidth,
+        (window.innerHeight - 8) / stage.offsetHeight
+      );
+      stage.style.transform = 'translate(-50%, -50%) scale(' + Math.min(1, Math.max(0.1, s)) + ')';
+    }, 16);
   }
   window.addEventListener('resize', fitStage);
+  window.addEventListener('orientationchange', fitStage);
 
   /* ================= 主循环 ================= */
   let lastT = 0;
